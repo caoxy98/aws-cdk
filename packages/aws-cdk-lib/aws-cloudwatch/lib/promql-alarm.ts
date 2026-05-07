@@ -2,7 +2,9 @@ import type { Construct } from 'constructs';
 import type { IAlarm } from './alarm-base';
 import { AlarmBase } from './alarm-base';
 import { CfnAlarm } from './cloudwatch.generated';
-import { ArnFormat, Duration, Lazy, Stack } from '../../core';
+import { ArnFormat, Lazy, Stack, Token, ValidationError } from '../../core';
+import type { Duration } from '../../core';
+import { lit } from '../../core/lib/private/literal-string';
 import { memoizedGetter } from '../../core/lib/helpers-internal';
 import { addConstructMetadata } from '../../core/lib/metadata-resource';
 import { propertyInjectable } from '../../core/lib/prop-injectable';
@@ -102,6 +104,25 @@ export class PromQLAlarm extends AlarmBase {
 
     addConstructMetadata(this, props);
 
+    const evaluationInterval = props.evaluationInterval.toSeconds();
+    if (!Token.isUnresolved(evaluationInterval) && (evaluationInterval < 10 || evaluationInterval > 3600)) {
+      throw new ValidationError(lit`InvalidEvaluationInterval`, `evaluationInterval must be between 10 and 3600 seconds, got ${evaluationInterval}`, this);
+    }
+
+    const pendingPeriod = props.pendingPeriod?.toSeconds();
+    if (pendingPeriod !== undefined && !Token.isUnresolved(pendingPeriod) && (pendingPeriod < 0 || pendingPeriod > 86400)) {
+      throw new ValidationError(lit`InvalidPendingPeriod`, `pendingPeriod must be between 0 and 86400 seconds, got ${pendingPeriod}`, this);
+    }
+
+    const recoveryPeriod = props.recoveryPeriod?.toSeconds();
+    if (recoveryPeriod !== undefined && !Token.isUnresolved(recoveryPeriod) && (recoveryPeriod < 0 || recoveryPeriod > 86400)) {
+      throw new ValidationError(lit`InvalidRecoveryPeriod`, `recoveryPeriod must be between 0 and 86400 seconds, got ${recoveryPeriod}`, this);
+    }
+
+    if (!Token.isUnresolved(props.query) && (props.query.length < 1 || props.query.length > 10000)) {
+      throw new ValidationError(lit`InvalidQuery`, `query must be between 1 and 10000 characters, got ${props.query.length}`, this);
+    }
+
     this.alarm = new CfnAlarm(this, 'Resource', {
       alarmDescription: props.alarmDescription,
       alarmName: this.physicalName,
@@ -112,11 +133,11 @@ export class PromQLAlarm extends AlarmBase {
       evaluationCriteria: {
         promQlCriteria: {
           query: props.query,
-          pendingPeriod: props.pendingPeriod?.toSeconds(),
-          recoveryPeriod: props.recoveryPeriod?.toSeconds(),
+          pendingPeriod: pendingPeriod,
+          recoveryPeriod: recoveryPeriod,
         },
       },
-      evaluationInterval: props.evaluationInterval.toSeconds(),
+      evaluationInterval: evaluationInterval,
     });
   }
 
